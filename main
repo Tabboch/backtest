@@ -1,0 +1,136 @@
+import pandas as pd
+import openpyxl
+import matplotlib.pyplot as plt
+import numpy as np
+from cProfile import label
+from turtle import filling
+from itertools import product
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+from datetime import datetime
+import backtrader as bt
+
+
+def backtest_ma(file_path, ma1, ma2, transaction_cost, start_date, end_date):
+
+    df = pd.read_excel(file_path, engine = 'openpyxl', skiprows = range(0, 8), usecols = "A:B")
+    df = df.set_index('Date')
+    Price_col = df.columns[0]
+    df['MA_1'] = df[Price_col].rolling(window=ma1).mean()
+    df['MA_2'] = df[Price_col].rolling(window=ma2).mean()
+    df['Signal'] = (np.sign((df['MA_1'] - df['MA_2']) * (df['MA_1'].shift(1) - df['MA_2'].shift(1))) - 1)/(df['MA_1'].shift(1) - df['MA_2'].shift(1))
+    df.replace([np.inf, -np.inf], 0, inplace=True)
+    df['Signal'] = np.sign(df['Signal'])
+
+    if len(start_date)!=0:        
+        df = df[df.index >= start_date]
+    if len(end_date)!=0:
+        df = df[df.index <= end_date]
+        
+    df = df.dropna()
+
+    class Portfolio:
+
+        def __init__(self, name):
+            self.name = name
+            self.Position = 0
+            self.PL = 0
+            self.Price = 0
+            self.Locked = 0
+
+        def addTrade(self, pos, price):
+
+            if pos != 0:
+                self.Locked += ((price*(1 - transaction_cost*self.Position) - self.Price*(1 + transaction_cost*self.Position))*self.Position)
+                self.Position = pos
+                self.Price = price
+            
+            self.PL = ((price*(1 - transaction_cost*self.Position) - self.Price*(1 + transaction_cost*self.Position))*self.Position) + self.Locked
+
+        def printSummary(self):
+            print('Closing all the positions on last day, Total P&L: {} '.format(self.PL))
+
+    Backtest = Portfolio('backtest')
+
+    PL_list = []
+
+    for index, row in df.iterrows():
+        Backtest.addTrade(row["Signal"], row[Price_col])
+        PL_list.append(Backtest.PL)
+
+    Backtest.printSummary()
+    
+    fig, axs = plt.subplots(3, 1, figsize=(20,15))
+    fig.suptitle('Backtest Results', fontsize=24, fontname="Times New Roman")
+
+    axs[0].plot(df.index, PL_list, label = 'P&L', color = 'b')
+    axs[0].legend()
+
+    axs[1].plot(df.index, df[Price_col], linewidth = 2, label = 'Price')
+    axs[1].plot(df.index, df['MA_1'], ls = '--', linewidth = 1.5, label = 'MA ' + str(ma1))
+    axs[1].plot(df.index, df['MA_2'], ls = '--', linewidth = 1.5, label = 'MA ' + str(ma2))
+    axs[1].legend()
+
+    axs[2].plot(df.index, df['Signal'], label = 'Signal', color = 'r')
+    axs[2].legend()
+
+    plt.show()
+
+    from logging import PlaceHolder
+
+
+button = widgets.Button(description = "Click to validate!")
+output = widgets.Output()
+
+file_path_widget = widgets.Text(
+    placeholder='Enter excel path',
+    description='Path:',
+    disabled=False
+)
+
+MA1_widget = widgets.IntText(
+    placeholder='5',
+    description='Fist Moving Average',
+    disabled=False
+)
+
+MA2_widget = widgets.IntText(
+    placeholder='20',
+    description='Second Moving Average',
+    disabled=False
+)
+
+start_date_widget = widgets.Text(
+    placeholder='YYYY-MM-DD',
+    description='Start Date:',
+    disabled=False
+)
+
+end_date_widget = widgets.Text(
+    placeholder='YYYY-MM-DD',
+    description='End Date:',
+    disabled=False
+)
+
+transaction_cost_widget = widgets.FloatText(
+    description='Transaction cost (fraction)',
+    value=0.005,
+    disabled=False
+)
+
+display(file_path_widget, MA1_widget, MA2_widget, transaction_cost_widget, start_date_widget, end_date_widget, button, output)
+
+def on_button_clicked(b):
+    
+    file_path = file_path_widget.value
+    ma1 = MA1_widget.value
+    ma2 = MA2_widget.value
+    start_date = start_date_widget.value
+    end_date = end_date_widget.value
+    transaction_cost = transaction_cost_widget.value
+
+    with output:
+        clear_output()
+        backtest_ma(file_path, ma1, ma2, transaction_cost, start_date, end_date)
+    
+button.on_click(on_button_clicked)
