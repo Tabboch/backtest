@@ -134,3 +134,54 @@ def on_button_clicked(b):
         backtest_ma(file_path, ma1, ma2, transaction_cost, start_date, end_date)
     
 button.on_click(on_button_clicked)
+
+
+class Portfolio:
+
+        def __init__(self, name):
+            self.name = name
+            self.Position = 0
+            self.PL = 0
+            self.Price = 0
+            self.Locked = 0
+
+        def addTrade(self, quantile, volatility):
+            if self.Position > -1 and quantile >= 0.9:
+                self.Position = -1
+                self.Price = volatility
+            elif self.Position == -1 and quantile < 0.5:
+                self.Position = 0
+                self.Locked += self.Price - volatility
+            elif self.Position == 1 and quantile > 0.5:
+                self.Position = 0
+                self.Locked += volatility - self.Price
+            elif self.Position < 1 and quantile<= 0.1:
+                self.Position = 1
+                self.Price = volatility
+
+            self.PL = self.Locked + self.Position*(volatility - self.Price)
+        
+        def printSummary(self):
+            print('Closing all the positions on last day, Total P&L: {} '.format(self.PL))
+
+Backtest = Portfolio('backtest')
+
+PL_list = []
+Position_list =[]
+
+for index, row in df.iterrows():
+    Backtest.addTrade(row["Quantile"], row["Vol"])
+    PL_list.append(Backtest.PL)
+    Position_list.append(Backtest.Position)
+
+Backtest.printSummary()
+fig, axs = plt.subplots(2, 1, figsize=(20,15))
+fig.suptitle('Backtest Results', fontsize=24, fontname="Times New Roman")
+
+axs[0].plot(df.index, PL_list, label = 'P&L', color = 'b')
+axs[0].legend()
+
+axs[1].scatter(df.index, Position_list, label = 'Position', color = 'r')
+axs[1].legend()
+
+plt.show()
